@@ -4,49 +4,76 @@ import pandas as pd
 from sqlalchemy import create_engine
 
 # Lấy thông tin từ secrets của Streamlit
-# Khi chạy local, cần file .streamlit/secrets.toml
-# Khi deploy, cần cài đặt trong phần Settings của Streamlit Cloud
 try:
     DB_CONFIG = st.secrets["postgres"]
-except Exception:
-    st.error("Không tìm thấy thông tin kết nối Database (secrets).")
+except KeyError:
+    st.error("❌ Không tìm thấy thông tin kết nối Database trong Secrets.")
+    st.info("Vui lòng cấu hình Secrets với định dạng:\n\n[postgres]\nhost = \"...\"\ndbname = \"...\"\nuser = \"...\"\npassword = \"...\"\nport = \"5432\"")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Lỗi đọc Secrets: {e}")
     st.stop()
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_CONFIG["host"],
-        database=DB_CONFIG["dbname"],
-        user=DB_CONFIG["user"],
-        password=DB_CONFIG["password"],
-        port=DB_CONFIG["port"]
-    )
+    """Tạo kết nối PostgreSQL"""
+    try:
+        conn = psycopg2.connect(
+            host=DB_CONFIG["host"],
+            database=DB_CONFIG["dbname"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            port=DB_CONFIG.get("port", 5432),
+            connect_timeout=10
+        )
+        return conn
+    except psycopg2.OperationalError as e:
+        st.error(f"❌ Lỗi kết nối Database: {str(e)}")
+        st.info("Kiểm tra lại thông tin trong Secrets:\n- Host đúng?\n- User đúng?\n- Password đúng?\n- Port đúng?")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Lỗi không xác định: {str(e)}")
+        st.stop()
 
 def get_engine():
-    url = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
-    return create_engine(url)
+    """Tạo SQLAlchemy engine"""
+    try:
+        url = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG.get('port', 5432)}/{DB_CONFIG['dbname']}"
+        return create_engine(url)
+    except Exception as e:
+        st.error(f"❌ Lỗi tạo engine: {e}")
+        st.stop()
 
 def run_query(query, params=None):
-    conn = get_connection()
+    """Thực thi SELECT query và trả về DataFrame"""
+    conn = None
     try:
+        conn = get_connection()
         df = pd.read_sql(query, conn, params=params)
         return df
     except Exception as e:
-        st.error(f"Lỗi truy vấn: {e}")
+        st.error(f"❌ Lỗi truy vấn: {e}")
         return pd.DataFrame()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def run_insert(query, params):
-    conn = get_connection()
-    cur = conn.cursor()
+    """Thực thi INSERT/UPDATE/DELETE query"""
+    conn = None
+    cur = None
     try:
+        conn = get_connection()
+        cur = conn.cursor()
         cur.execute(query, params)
         conn.commit()
         return True
     except Exception as e:
-        st.error(f"Lỗi ghi dữ liệu: {e}")
-        conn.rollback()
+        st.error(f"❌ Lỗi ghi dữ liệu: {e}")
+        if conn:
+            conn.rollback()
         return False
     finally:
-        cur.close()
-        conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
