@@ -60,11 +60,17 @@ if df_staff.empty:
 # Tạo 2 dictionaries cho staff mapping
 staff_display_to_id = {}
 staff_id_to_display = {}
+staff_name_to_id = {}  # Mapping tên → id (backup)
 
 for _, row in df_staff.iterrows():
-    display_name = f"{row['name']} ({row['staff_code']})"
+    # Normalize: trim spaces
+    clean_name = ' '.join(row['name'].split())
+    clean_code = row['staff_code'].strip()
+    
+    display_name = f"{clean_name} ({clean_code})"
     staff_display_to_id[display_name] = row['id']
     staff_id_to_display[row['id']] = display_name
+    staff_name_to_id[clean_name] = row['id']  # Backup mapping
 
 staff_options_list = list(staff_display_to_id.keys())
 
@@ -173,18 +179,37 @@ if st.button("💾 Lưu Kết Quả", type="primary", use_container_width=True):
                 evidence_link = row['Link minh chứng'] if row['Link minh chứng'] else None
                 
                 # Tìm staff_id từ display name với fallback
-                if staff_display_name in staff_display_to_id:
-                    staff_id = staff_display_to_id[staff_display_name]
-                else:
-                    # Fallback: tìm theo tên không có mã
-                    staff_name_only = staff_display_name.split('(')[0].strip() if '(' in staff_display_name else staff_display_name
-                    matching_staff = df_staff[df_staff['name'] == staff_name_only]
-                    
-                    if not matching_staff.empty:
-                        staff_id = matching_staff.iloc[0]['id']
+                staff_id = None
+                
+                # Normalize input
+                clean_display = ' '.join(staff_display_name.split())
+                
+                # Method 1: Exact match
+                if clean_display in staff_display_to_id:
+                    staff_id = staff_display_to_id[clean_display]
+                
+                # Method 2: Fallback - tìm theo tên không có mã
+                if not staff_id:
+                    if '(' in clean_display:
+                        staff_name_only = clean_display.split('(')[0].strip()
                     else:
-                        errors.append(f"Dòng {idx+1}: Không tìm thấy nhân sự '{staff_display_name}'")
-                        continue
+                        staff_name_only = clean_display
+                    
+                    # Normalize name
+                    staff_name_only = ' '.join(staff_name_only.split())
+                    
+                    # Tìm trong staff_name_to_id
+                    if staff_name_only in staff_name_to_id:
+                        staff_id = staff_name_to_id[staff_name_only]
+                    else:
+                        # Tìm trong df_staff
+                        matching_staff = df_staff[df_staff['name'].str.strip().str.replace(r'\s+', ' ', regex=True) == staff_name_only]
+                        if not matching_staff.empty:
+                            staff_id = matching_staff.iloc[0]['id']
+                
+                if not staff_id:
+                    errors.append(f"Dòng {idx+1}: Không tìm thấy nhân sự '{staff_display_name}'")
+                    continue
                 
                 cur.execute(
                     """
