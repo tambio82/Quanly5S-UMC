@@ -1,7 +1,7 @@
 import streamlit as st
 import psycopg2
 import pandas as pd
-from sqlalchemy import create_engine
+# from sqlalchemy import create_engine  # Commented out - not used
 
 # Lấy thông tin từ secrets của Streamlit
 # Khi chạy local, cần file .streamlit/secrets.toml
@@ -21,9 +21,9 @@ def get_connection():
         port=DB_CONFIG["port"]
     )
 
-def get_engine():
-    url = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
-    return create_engine(url)
+# def get_engine():
+#     url = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}"
+#     return create_engine(url)
 
 def run_query(query, params=None):
     conn = get_connection()
