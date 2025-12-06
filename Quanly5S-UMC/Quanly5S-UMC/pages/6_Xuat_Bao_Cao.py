@@ -2,18 +2,23 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from db_utils import run_query, get_connection
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from fpdf import FPDF
 import io
-import os
 
 st.set_page_config(page_title="Xuất Báo Cáo", page_icon="📄", layout="wide")
 
 st.title("📄 XUẤT BÁO CÁO PDF")
+
+# Custom PDF class
+class PDF5S(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 16)
+        self.cell(0, 10, '', 0, 1, 'C')
+    
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Trang {self.page_no()}', 0, 0, 'C')
 
 # Tabs
 tab1, tab2, tab3 = st.tabs(["📝 Tạo Báo Cáo Mới", "📋 Quản Lý Báo Cáo", "🔍 Xem & In Báo Cáo"])
@@ -46,7 +51,7 @@ with tab1:
     """, params=(selected_dept_id,))
     
     if df_evals.empty:
-        st.info("📭 Chưa có đợt đánh giá nào cho Khoa/Phòng này")
+        st.info("📭 Chưa có đợt đánh giá nào")
     else:
         eval_options = {
             f"{row['eval_date']} ({row['so_dat']}/{row['tong_so']} đạt)": row['id'] 
@@ -66,8 +71,7 @@ with tab1:
                 c.location_name as "Vị trí",
                 c.category as "Hạng mục",
                 CASE WHEN ed.is_pass THEN 'Đạt' ELSE 'Không đạt' END as "Kết quả",
-                s.name as "Nhân sự",
-                ed.adjustment_note as "Ghi chú"
+                s.name as "Nhân sự"
             FROM evaluation_details ed
             JOIN criteria c ON ed.criteria_id = c.id
             JOIN areas a ON c.area_id = a.id
@@ -81,7 +85,7 @@ with tab1:
             
             st.divider()
             
-            # Form nhập thông tin báo cáo
+            # Form nhập thông tin
             st.write("### Thông Tin Báo Cáo")
             
             col1, col2 = st.columns(2)
@@ -89,175 +93,119 @@ with tab1:
             with col1:
                 report_title = st.text_input(
                     "Tiêu đề báo cáo",
-                    value=f"BÁO CÁO ĐÁNH GIÁ 5S - {selected_dept.split(' - ')[1].upper()}",
+                    value=f"BAO CAO DANH GIA 5S - {selected_dept.split(' - ')[1].upper()}",
                     key="report_title"
                 )
-                
-                evaluator_name = st.text_input("Người đi kiểm tra", placeholder="Nguyễn Văn A", key="evaluator")
+                evaluator_name = st.text_input("Người kiểm tra", key="evaluator")
             
             with col2:
                 report_date = st.date_input("Ngày báo cáo", value=datetime.now().date(), key="report_date")
-                
-                supervisor_name = st.text_input("Điều phối/Giám sát", placeholder="Trần Thị B", key="supervisor")
+                supervisor_name = st.text_input("Điều phối/Giám sát", key="supervisor")
             
-            manager_name = st.text_input("P.Quản lý chất lượng", placeholder="Lê Văn C", key="manager")
-            
-            evaluation_text = st.text_area(
-                "Đánh giá & Nhận xét",
-                placeholder="Nhập đánh giá tổng quát về kết quả đánh giá 5S...",
-                height=150,
-                key="eval_text"
-            )
+            manager_name = st.text_input("P.Quản lý chất lượng", key="manager")
+            evaluation_text = st.text_area("Đánh giá & Nhận xét", height=150, key="eval_text")
             
             st.divider()
             
             # Nút tạo báo cáo
             if st.button("📄 Tạo Báo Cáo PDF", type="primary", use_container_width=True):
                 try:
-                    # Tạo PDF
-                    pdf_buffer = io.BytesIO()
-                    
-                    # Setup document
-                    doc = SimpleDocTemplate(
-                        pdf_buffer,
-                        pagesize=A4,
-                        rightMargin=2*cm,
-                        leftMargin=2*cm,
-                        topMargin=2*cm,
-                        bottomMargin=2*cm
-                    )
-                    
-                    # Register font (nếu có)
-                    # Nếu không có font tiếng Việt, dùng Helvetica
-                    styles = getSampleStyleSheet()
-                    
-                    # Custom styles
-                    title_style = ParagraphStyle(
-                        'CustomTitle',
-                        parent=styles['Heading1'],
-                        fontSize=16,
-                        textColor=colors.HexColor('#1f4788'),
-                        spaceAfter=20,
-                        alignment=TA_CENTER,
-                        fontName='Helvetica-Bold'
-                    )
-                    
-                    heading_style = ParagraphStyle(
-                        'CustomHeading',
-                        parent=styles['Heading2'],
-                        fontSize=12,
-                        textColor=colors.HexColor('#2c5282'),
-                        spaceAfter=10,
-                        fontName='Helvetica-Bold'
-                    )
-                    
-                    normal_style = ParagraphStyle(
-                        'CustomNormal',
-                        parent=styles['Normal'],
-                        fontSize=10,
-                        fontName='Helvetica'
-                    )
-                    
-                    # Build content
-                    story = []
+                    # Tạo PDF với FPDF
+                    pdf = PDF5S()
+                    pdf.add_page()
+                    pdf.set_auto_page_break(auto=True, margin=15)
                     
                     # Title
-                    story.append(Paragraph(report_title, title_style))
-                    story.append(Spacer(1, 0.5*cm))
+                    pdf.set_font('Arial', 'B', 16)
+                    pdf.cell(0, 10, report_title.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'C')
+                    pdf.ln(5)
                     
-                    # Info section
-                    info_data = [
-                        ['Khoa/Phong:', selected_dept],
-                        ['Thoi gian:', str(report_date)],
-                        ['Nguoi kiem tra:', evaluator_name if evaluator_name else '']
-                    ]
+                    # Info
+                    pdf.set_font('Arial', '', 10)
+                    pdf.cell(0, 6, f"Khoa/Phong: {selected_dept.encode('latin-1', 'replace').decode('latin-1')}", 0, 1)
+                    pdf.cell(0, 6, f"Thoi gian: {report_date}", 0, 1)
+                    if evaluator_name:
+                        pdf.cell(0, 6, f"Nguoi kiem tra: {evaluator_name.encode('latin-1', 'replace').decode('latin-1')}", 0, 1)
+                    pdf.ln(10)
                     
-                    info_table = Table(info_data, colWidths=[4*cm, 12*cm])
-                    info_table.setStyle(TableStyle([
-                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),
-                        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#2c5282')),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ]))
+                    # Table header
+                    pdf.set_font('Arial', 'B', 9)
+                    pdf.set_fill_color(66, 153, 225)
+                    pdf.set_text_color(255, 255, 255)
                     
-                    story.append(info_table)
-                    story.append(Spacer(1, 0.8*cm))
+                    col_widths = [35, 45, 55, 25, 30]
+                    headers = ['Khu vuc', 'Vi tri', 'Hang muc', 'Ket qua', 'Nhan su']
                     
-                    # Results table
-                    story.append(Paragraph('KET QUA DANH GIA CHI TIET', heading_style))
-                    story.append(Spacer(1, 0.3*cm))
+                    for i, header in enumerate(headers):
+                        pdf.cell(col_widths[i], 8, header, 1, 0, 'C', True)
+                    pdf.ln()
                     
-                    # Prepare table data
-                    table_data = [['Khu vuc', 'Vi tri', 'Hang muc', 'Ket qua', 'Nhan su']]
+                    # Table rows
+                    pdf.set_font('Arial', '', 8)
+                    pdf.set_text_color(0, 0, 0)
                     
-                    for _, row in df_preview.iterrows():
-                        table_data.append([
-                            str(row['Khu vực'])[:20],
-                            str(row['Vị trí'])[:25],
-                            str(row['Hạng mục'])[:30],
-                            str(row['Kết quả']),
-                            str(row['Nhân sự'])[:20]
-                        ])
+                    for idx, row in df_preview.iterrows():
+                        if idx % 2 == 0:
+                            pdf.set_fill_color(247, 250, 252)
+                        else:
+                            pdf.set_fill_color(255, 255, 255)
+                        
+                        data = [
+                            str(row['Khu vực'])[:18],
+                            str(row['Vị trí'])[:22],
+                            str(row['Hạng mục'])[:28],
+                            str(row['Kết quả'])[:12],
+                            str(row['Nhân sự'])[:15]
+                        ]
+                        
+                        for i, val in enumerate(data):
+                            pdf.cell(col_widths[i], 6, val.encode('latin-1', 'replace').decode('latin-1'), 1, 0, 'L', True)
+                        pdf.ln()
                     
-                    results_table = Table(table_data, colWidths=[3.5*cm, 4*cm, 5*cm, 2*cm, 2.5*cm])
-                    results_table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4299e1')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 9),
-                        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 8),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
-                    ]))
-                    
-                    story.append(results_table)
-                    story.append(Spacer(1, 0.8*cm))
+                    pdf.ln(10)
                     
                     # Evaluation section
                     if evaluation_text:
-                        story.append(Paragraph('DANH GIA & NHAN XET', heading_style))
-                        story.append(Spacer(1, 0.3*cm))
-                        
-                        eval_para = Paragraph(evaluation_text, normal_style)
-                        story.append(eval_para)
-                        story.append(Spacer(1, 1*cm))
+                        pdf.set_font('Arial', 'B', 11)
+                        pdf.cell(0, 8, 'DANH GIA & NHAN XET', 0, 1)
+                        pdf.set_font('Arial', '', 10)
+                        pdf.multi_cell(0, 5, evaluation_text.encode('latin-1', 'replace').decode('latin-1'))
+                        pdf.ln(10)
                     
-                    # Signature section
-                    story.append(Spacer(1, 1*cm))
+                    # Signatures
+                    pdf.ln(15)
+                    pdf.set_font('Arial', 'B', 10)
                     
-                    sig_data = [
-                        ['Nguoi kiem tra', 'Dieu phoi/Giam sat', 'P.Quan ly chat luong'],
-                        ['', '', ''],
-                        ['', '', ''],
-                        [evaluator_name if evaluator_name else '', supervisor_name if supervisor_name else '', manager_name if manager_name else '']
-                    ]
+                    x_start = pdf.get_x()
+                    y_start = pdf.get_y()
                     
-                    sig_table = Table(sig_data, colWidths=[5.5*cm, 5.5*cm, 5.5*cm], rowHeights=[0.8*cm, 2*cm, 0.5*cm, 0.8*cm])
-                    sig_table.setStyle(TableStyle([
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 10),
-                        ('FONTNAME', (0, 3), (-1, 3), 'Helvetica'),
-                        ('FONTSIZE', (0, 3), (-1, 3), 9),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-                        ('VALIGN', (0, 3), (-1, 3), 'TOP'),
-                        ('LINEABOVE', (0, 3), (-1, 3), 0.5, colors.black),
-                    ]))
+                    # 3 columns for signatures
+                    pdf.cell(60, 6, 'Nguoi kiem tra', 0, 0, 'C')
+                    pdf.cell(65, 6, 'Dieu phoi/Giam sat', 0, 0, 'C')
+                    pdf.cell(60, 6, 'P.Quan ly chat luong', 0, 1, 'C')
                     
-                    story.append(sig_table)
+                    pdf.ln(20)
                     
-                    # Build PDF
-                    doc.build(story)
+                    pdf.set_font('Arial', '', 9)
+                    if evaluator_name:
+                        pdf.cell(60, 6, evaluator_name.encode('latin-1', 'replace').decode('latin-1'), 0, 0, 'C')
+                    else:
+                        pdf.cell(60, 6, '', 0, 0, 'C')
+                    
+                    if supervisor_name:
+                        pdf.cell(65, 6, supervisor_name.encode('latin-1', 'replace').decode('latin-1'), 0, 0, 'C')
+                    else:
+                        pdf.cell(65, 6, '', 0, 0, 'C')
+                    
+                    if manager_name:
+                        pdf.cell(60, 6, manager_name.encode('latin-1', 'replace').decode('latin-1'), 0, 1, 'C')
+                    else:
+                        pdf.cell(60, 6, '', 0, 1, 'C')
+                    
+                    # Get PDF bytes
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
                     
                     # Save to database
-                    pdf_bytes = pdf_buffer.getvalue()
-                    
                     conn = get_connection()
                     cur = conn.cursor()
                     
@@ -297,12 +245,13 @@ with tab1:
                     
                 except Exception as e:
                     st.error(f"❌ Lỗi: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
 # ==================== TAB 2: QUẢN LÝ BÁO CÁO ====================
 with tab2:
     st.subheader("Danh Sách Báo Cáo")
     
-    # Lấy danh sách báo cáo
     df_reports = run_query("""
         SELECT 
             r.id,
@@ -326,72 +275,32 @@ with tab2:
                 
                 with col_info:
                     st.write(f"**Khoa/Phòng:** {report['department']}")
-                    st.write(f"**Ngày báo cáo:** {report['report_date']}")
+                    st.write(f"**Ngày:** {report['report_date']}")
                     st.write(f"**Người kiểm tra:** {report['evaluator_name']}")
-                    st.write(f"**Tạo lúc:** {report['created_at']}")
                 
                 with col_actions:
-                    if st.button("🔍 Xem", key=f"view_{report['id']}", use_container_width=True):
-                        st.session_state['viewing_report_id'] = report['id']
-                        st.rerun()
+                    # Get PDF
+                    df_pdf = run_query("SELECT pdf_data FROM reports WHERE id = %s", params=(report['id'],))
+                    if not df_pdf.empty and df_pdf.iloc[0]['pdf_data']:
+                        pdf_data = bytes(df_pdf.iloc[0]['pdf_data'])
+                        st.download_button(
+                            "📥 Tải PDF",
+                            data=pdf_data,
+                            file_name=f"Report_{report['id']}.pdf",
+                            mime="application/pdf",
+                            key=f"download_{report['id']}",
+                            use_container_width=True
+                        )
                     
-                    if st.button("✏️ Sửa", key=f"edit_{report['id']}", use_container_width=True):
-                        st.session_state[f"editing_report_{report['id']}"] = True
-                    
-                    if st.button("🗑️ Xóa", key=f"delete_{report['id']}", use_container_width=True):
-                        st.session_state[f"confirm_delete_report_{report['id']}"] = True
+                    if st.button("🗑️ Xóa", key=f"del_{report['id']}", use_container_width=True):
+                        st.session_state[f"confirm_del_{report['id']}"] = True
                 
-                # Form sửa
-                if st.session_state.get(f"editing_report_{report['id']}", False):
-                    st.divider()
-                    st.write("### ✏️ Chỉnh sửa Báo cáo")
+                if st.session_state.get(f"confirm_del_{report['id']}", False):
+                    st.warning("⚠️ Xác nhận xóa?")
+                    col_y, col_n = st.columns(2)
                     
-                    # Lấy dữ liệu báo cáo
-                    df_report_data = run_query(
-                        "SELECT * FROM reports WHERE id = %s",
-                        params=(report['id'],)
-                    )
-                    
-                    if not df_report_data.empty:
-                        report_data = df_report_data.iloc[0]
-                        
-                        new_title = st.text_input("Tiêu đề", value=report_data['report_title'], key=f"edit_title_{report['id']}")
-                        new_eval_text = st.text_area("Đánh giá", value=report_data['evaluation_text'] or "", key=f"edit_eval_{report['id']}", height=150)
-                        
-                        col_save, col_cancel = st.columns(2)
-                        
-                        with col_save:
-                            if st.button("💾 Lưu", type="primary", key=f"save_{report['id']}", use_container_width=True):
-                                try:
-                                    conn = get_connection()
-                                    cur = conn.cursor()
-                                    cur.execute(
-                                        "UPDATE reports SET report_title=%s, evaluation_text=%s WHERE id=%s",
-                                        (new_title, new_eval_text, report['id'])
-                                    )
-                                    conn.commit()
-                                    cur.close()
-                                    conn.close()
-                                    
-                                    st.success("✅ Đã cập nhật!")
-                                    st.session_state[f"editing_report_{report['id']}"] = False
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Lỗi: {e}")
-                        
-                        with col_cancel:
-                            if st.button("❌ Hủy", key=f"cancel_{report['id']}", use_container_width=True):
-                                st.session_state[f"editing_report_{report['id']}"] = False
-                                st.rerun()
-                
-                # Xóa
-                if st.session_state.get(f"confirm_delete_report_{report['id']}", False):
-                    st.warning(f"⚠️ Xác nhận xóa báo cáo **{report['report_title']}**?")
-                    
-                    col_yes, col_no = st.columns(2)
-                    
-                    with col_yes:
-                        if st.button("✅ Xóa", type="primary", key=f"yes_delete_{report['id']}"):
+                    with col_y:
+                        if st.button("✅ Xóa", key=f"yes_{report['id']}", type="primary"):
                             try:
                                 conn = get_connection()
                                 cur = conn.cursor()
@@ -399,60 +308,18 @@ with tab2:
                                 conn.commit()
                                 cur.close()
                                 conn.close()
-                                
                                 st.success("✅ Đã xóa!")
-                                st.session_state[f"confirm_delete_report_{report['id']}"] = False
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Lỗi: {e}")
                     
-                    with col_no:
-                        if st.button("❌ Hủy", key=f"no_delete_{report['id']}"):
-                            st.session_state[f"confirm_delete_report_{report['id']}"] = False
+                    with col_n:
+                        if st.button("❌ Hủy", key=f"no_{report['id']}"):
+                            st.session_state[f"confirm_del_{report['id']}"] = False
                             st.rerun()
     else:
-        st.info("📭 Chưa có báo cáo nào")
+        st.info("📭 Chưa có báo cáo")
 
-# ==================== TAB 3: XEM & IN BÁO CÁO ====================
+# ==================== TAB 3: XEM BÁO CÁO ====================
 with tab3:
-    st.subheader("Xem & In Báo Cáo")
-    
-    if 'viewing_report_id' in st.session_state:
-        # Lấy dữ liệu báo cáo
-        df_view = run_query(
-            "SELECT * FROM reports WHERE id = %s",
-            params=(st.session_state['viewing_report_id'],)
-        )
-        
-        if not df_view.empty:
-            report_view = df_view.iloc[0]
-            
-            st.write(f"### {report_view['report_title']}")
-            st.write(f"**Ngày:** {report_view['report_date']}")
-            
-            # Display PDF
-            if report_view['pdf_data']:
-                pdf_bytes = bytes(report_view['pdf_data'])
-                
-                # Download button
-                st.download_button(
-                    label="📥 Tải PDF",
-                    data=pdf_bytes,
-                    file_name=f"Report_{report_view['id']}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-                
-                st.divider()
-                
-                # Embed PDF viewer (base64)
-                import base64
-                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-                st.markdown(pdf_display, unsafe_allow_html=True)
-            else:
-                st.warning("⚠️ PDF không có dữ liệu")
-        else:
-            st.error("❌ Không tìm thấy báo cáo")
-    else:
-        st.info("💡 Chọn báo cáo từ Tab 'Quản Lý Báo Cáo' để xem")
+    st.info("💡 Sử dụng nút 'Tải PDF' ở Tab 'Quản Lý Báo Cáo' để tải và xem báo cáo")
