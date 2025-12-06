@@ -4,70 +4,31 @@ from datetime import datetime
 from db_utils import run_query, get_connection
 from fpdf import FPDF
 import io
-import os
-import glob
 
 st.set_page_config(page_title="Xuất Báo Cáo", page_icon="📄", layout="wide")
 
 st.title("📄 XUẤT BÁO CÁO PDF")
 
-# Find DejaVu font
-def find_dejavu_font():
-    """Auto-detect DejaVu font location"""
-    possible_paths = [
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-        '/System/Library/Fonts/Supplemental/DejaVuSans.ttf',
-        'C:\\Windows\\Fonts\\DejaVuSans.ttf',
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            return os.path.dirname(path)
-    
-    # Try to find via glob
-    for pattern in ['/usr/share/fonts/**/DejaVuSans.ttf', '/System/**/DejaVuSans.ttf']:
-        results = glob.glob(pattern, recursive=True)
-        if results:
-            return os.path.dirname(results[0])
-    
-    return None
-
 # Custom PDF class with Unicode support
 class PDF5S(FPDF):
     def __init__(self):
         super().__init__()
-        
-        # Try to add DejaVu font
-        font_dir = find_dejavu_font()
-        
-        if font_dir:
-            try:
-                self.add_font('DejaVu', '', f'{font_dir}/DejaVuSans.ttf', uni=True)
-                self.add_font('DejaVu', 'B', f'{font_dir}/DejaVuSans-Bold.ttf', uni=True)
-                self.font_available = True
-            except:
-                self.font_available = False
-        else:
-            self.font_available = False
-        
-        # Fallback to Arial if DejaVu not found
-        if not self.font_available:
-            st.warning("⚠️ DejaVu font không tìm thấy. Sử dụng Arial (có thể lỗi font tiếng Việt)")
+        # Add DejaVu font for Vietnamese support
+        self.add_font('DejaVu', '', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', uni=True)
+        self.add_font('DejaVu', 'B', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', uni=True)
+        self.add_font('DejaVu', 'I', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf', uni=True)
     
     def header(self):
-        font = 'DejaVu' if self.font_available else 'Arial'
-        self.set_font(font, 'B', 16)
+        self.set_font('DejaVu', 'B', 16)
         self.cell(0, 10, '', 0, 1, 'C')
     
     def footer(self):
         self.set_y(-15)
-        font = 'DejaVu' if self.font_available else 'Arial'
-        self.set_font(font, 'I', 8)
+        self.set_font('DejaVu', 'I', 8)
         self.cell(0, 10, f'Trang {self.page_no()}', 0, 0, 'C')
 
 # Tabs
-tab1, tab2 = st.tabs(["📝 Tạo Báo Cáo Mới", "📋 Quản Lý Báo Cáo"])
+tab1, tab2, tab3 = st.tabs(["📝 Tạo Báo Cáo Mới", "📋 Quản Lý Báo Cáo", "🔍 Xem & In Báo Cáo"])
 
 # ==================== TAB 1: TẠO BÁO CÁO MỚI ====================
 with tab1:
@@ -113,11 +74,11 @@ with tab1:
         
         df_preview = run_query("""
             SELECT 
-                a.area_name,
-                c.location_name,
-                c.category,
-                CASE WHEN ed.is_pass THEN 'Đạt' ELSE 'Không đạt' END as result,
-                s.name as staff_name
+                a.area_name as "Khu vực",
+                c.location_name as "Vị trí",
+                c.category as "Hạng mục",
+                CASE WHEN ed.is_pass THEN 'Đạt' ELSE 'Không đạt' END as "Kết quả",
+                s.name as "Nhân sự"
             FROM evaluation_details ed
             JOIN criteria c ON ed.criteria_id = c.id
             JOIN areas a ON c.area_id = a.id
@@ -127,16 +88,7 @@ with tab1:
         """, params=(selected_eval_id,))
         
         if not df_preview.empty:
-            # Rename for display
-            df_display = df_preview.rename(columns={
-                'area_name': 'Khu vực',
-                'location_name': 'Vị trí',
-                'category': 'Hạng mục',
-                'result': 'Kết quả',
-                'staff_name': 'Nhân sự'
-            })
-            
-            st.dataframe(df_display, use_container_width=True, hide_index=True, height=300)
+            st.dataframe(df_preview, use_container_width=True, hide_index=True, height=300)
             
             st.divider()
             
@@ -165,20 +117,18 @@ with tab1:
             # Nút tạo báo cáo
             if st.button("📄 Tạo Báo Cáo PDF", type="primary", use_container_width=True):
                 try:
-                    # Tạo PDF
+                    # Tạo PDF với DejaVu font
                     pdf = PDF5S()
                     pdf.add_page()
                     pdf.set_auto_page_break(auto=True, margin=15)
                     
-                    font = 'DejaVu' if pdf.font_available else 'Arial'
-                    
                     # Title
-                    pdf.set_font(font, 'B', 16)
+                    pdf.set_font('DejaVu', 'B', 16)
                     pdf.cell(0, 10, report_title, 0, 1, 'C')
                     pdf.ln(5)
                     
                     # Info
-                    pdf.set_font(font, '', 10)
+                    pdf.set_font('DejaVu', '', 10)
                     pdf.cell(0, 6, f"Khoa/Phòng: {selected_dept}", 0, 1)
                     pdf.cell(0, 6, f"Thời gian: {report_date}", 0, 1)
                     if evaluator_name:
@@ -186,7 +136,7 @@ with tab1:
                     pdf.ln(10)
                     
                     # Table header
-                    pdf.set_font(font, 'B', 9)
+                    pdf.set_font('DejaVu', 'B', 9)
                     pdf.set_fill_color(66, 153, 225)
                     pdf.set_text_color(255, 255, 255)
                     
@@ -198,7 +148,7 @@ with tab1:
                     pdf.ln()
                     
                     # Table rows
-                    pdf.set_font(font, '', 8)
+                    pdf.set_font('DejaVu', '', 8)
                     pdf.set_text_color(0, 0, 0)
                     
                     for idx, row in df_preview.iterrows():
@@ -208,11 +158,11 @@ with tab1:
                             pdf.set_fill_color(255, 255, 255)
                         
                         data = [
-                            str(row['area_name'])[:18],
-                            str(row['location_name'])[:22],
-                            str(row['category'])[:28],
-                            str(row['result'])[:12],
-                            str(row['staff_name'])[:15]
+                            str(row['Khu vực'])[:18],
+                            str(row['Vị trí'])[:22],
+                            str(row['Hạng mục'])[:28],
+                            str(row['Kết quả'])[:12],
+                            str(row['Nhân sự'])[:15]
                         ]
                         
                         for i, val in enumerate(data):
@@ -223,26 +173,38 @@ with tab1:
                     
                     # Evaluation section
                     if evaluation_text:
-                        pdf.set_font(font, 'B', 11)
+                        pdf.set_font('DejaVu', 'B', 11)
                         pdf.cell(0, 8, 'ĐÁNH GIÁ & NHẬN XÉT', 0, 1)
-                        pdf.set_font(font, '', 10)
+                        pdf.set_font('DejaVu', '', 10)
                         pdf.multi_cell(0, 5, evaluation_text)
                         pdf.ln(10)
                     
                     # Signatures
                     pdf.ln(15)
-                    pdf.set_font(font, 'B', 10)
+                    pdf.set_font('DejaVu', 'B', 10)
                     
+                    # 3 columns for signatures
                     pdf.cell(60, 6, 'Người kiểm tra', 0, 0, 'C')
                     pdf.cell(65, 6, 'Điều phối/Giám sát', 0, 0, 'C')
                     pdf.cell(60, 6, 'P.Quản lý chất lượng', 0, 1, 'C')
                     
                     pdf.ln(20)
                     
-                    pdf.set_font(font, '', 9)
-                    pdf.cell(60, 6, evaluator_name or '', 0, 0, 'C')
-                    pdf.cell(65, 6, supervisor_name or '', 0, 0, 'C')
-                    pdf.cell(60, 6, manager_name or '', 0, 1, 'C')
+                    pdf.set_font('DejaVu', '', 9)
+                    if evaluator_name:
+                        pdf.cell(60, 6, evaluator_name, 0, 0, 'C')
+                    else:
+                        pdf.cell(60, 6, '', 0, 0, 'C')
+                    
+                    if supervisor_name:
+                        pdf.cell(65, 6, supervisor_name, 0, 0, 'C')
+                    else:
+                        pdf.cell(65, 6, '', 0, 0, 'C')
+                    
+                    if manager_name:
+                        pdf.cell(60, 6, manager_name, 0, 1, 'C')
+                    else:
+                        pdf.cell(60, 6, '', 0, 1, 'C')
                     
                     # Get PDF bytes
                     pdf_bytes = pdf.output(dest='S').encode('latin-1')
@@ -260,10 +222,10 @@ with tab1:
                         selected_eval_id,
                         report_title,
                         report_date,
-                        evaluator_name or None,
-                        supervisor_name or None,
-                        manager_name or None,
-                        evaluation_text or None,
+                        evaluator_name if evaluator_name else None,
+                        supervisor_name if supervisor_name else None,
+                        manager_name if manager_name else None,
+                        evaluation_text if evaluation_text else None,
                         pdf_bytes
                     ))
                     
@@ -274,12 +236,6 @@ with tab1:
                     conn.close()
                     
                     st.success(f"✅ Đã tạo báo cáo #{report_id}")
-                    
-                    if pdf.font_available:
-                        st.info("✅ Font tiếng Việt: DejaVu (đầy đủ)")
-                    else:
-                        st.warning("⚠️ Font tiếng Việt: Arial (có thể lỗi dấu)")
-                    
                     st.balloons()
                     
                     # Download button
@@ -324,8 +280,7 @@ with tab2:
                 with col_info:
                     st.write(f"**Khoa/Phòng:** {report['department']}")
                     st.write(f"**Ngày:** {report['report_date']}")
-                    if report['evaluator_name']:
-                        st.write(f"**Người kiểm tra:** {report['evaluator_name']}")
+                    st.write(f"**Người kiểm tra:** {report['evaluator_name']}")
                 
                 with col_actions:
                     # Get PDF
@@ -368,3 +323,7 @@ with tab2:
                             st.rerun()
     else:
         st.info("📭 Chưa có báo cáo")
+
+# ==================== TAB 3: XEM BÁO CÁO ====================
+with tab3:
+    st.info("💡 Sử dụng nút 'Tải PDF' ở Tab 'Quản Lý Báo Cáo' để tải và xem báo cáo")
