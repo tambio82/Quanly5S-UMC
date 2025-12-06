@@ -1,8 +1,8 @@
 streamlit
 pandas
-psycopg2-binary
 plotly
+psycopg2-binary
 fpdf
-xlsxwriter
-sqlalchemy
 openpyxl
+xlsxwriter
+reportlab
