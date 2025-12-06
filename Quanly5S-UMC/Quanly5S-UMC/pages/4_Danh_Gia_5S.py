@@ -25,7 +25,7 @@ eval_date = st.date_input("Ngày đánh giá", value=date.today())
 
 st.divider()
 
-# Lấy tiêu chí THEO KHU VỰC ĐÃ GÁN CHO KHOA/PHÒNG NÀY
+# Lấy tiêu chí theo khu vực đã gán
 df_criteria = run_query("""
     SELECT 
         c.id,
@@ -42,8 +42,8 @@ df_criteria = run_query("""
 """, params=(selected_dept_id,))
 
 if df_criteria.empty:
-    st.warning(f"⚠️ **{selected_dept_name}** chưa có cấu hình khu vực nào!")
-    st.info("💡 Vui lòng vào trang **'Cau Hinh Khu Vuc'** → Tab **'Gán Khu vực cho Khoa/Phòng'** để cấu hình.")
+    st.warning(f"⚠️ **{selected_dept_name}** chưa có cấu hình khu vực!")
+    st.info("💡 Vui lòng vào **'Cau Hinh Khu Vuc'** → Tab **'Gán Khu vực cho Khoa/Phòng'** để cấu hình.")
     st.stop()
 
 # Lấy nhân sự
@@ -53,7 +53,7 @@ df_staff = run_query(
 )
 
 if df_staff.empty:
-    st.warning("⚠️ Chưa có nhân sự. Vui lòng thêm ở trang 'Quan Ly Don Vi'")
+    st.warning("⚠️ Chưa có nhân sự. Vui lòng thêm ở 'Quan Ly Don Vi'")
     st.stop()
 
 staff_options = {f"{row['name']} ({row['staff_code']})": row['id'] for _, row in df_staff.iterrows()}
@@ -73,9 +73,18 @@ st.divider()
 
 # Chuẩn bị dataframe
 df_display = df_criteria.copy()
+
+# Thêm cột "Định nghĩa" (requirement)
+df_display['Định nghĩa'] = df_display['requirement']
+
+# Thêm các cột mặc định
 df_display['Số lượng'] = 1
 df_display['Đạt'] = True
 df_display['Nhân sự phụ trách'] = list(staff_options.keys())[0]
+
+# Thêm 2 cột mới
+df_display['Nội dung điều chỉnh'] = ""
+df_display['Link minh chứng'] = ""
 
 # Hiển thị bảng có thể edit
 st.write("### Checklist đánh giá")
@@ -84,11 +93,17 @@ edited_df = st.data_editor(
     df_display,
     column_config={
         "id": None,
+        "requirement": None,  # Ẩn requirement vì đã có "Định nghĩa"
         "area_code": st.column_config.TextColumn("Mã KV", disabled=True, width="small"),
         "area_name": st.column_config.TextColumn("Khu vực", disabled=True, width="medium"),
         "location_name": st.column_config.TextColumn("Vị trí", disabled=True, width="medium"),
         "category": st.column_config.TextColumn("Hạng mục", disabled=True, width="large"),
-        "requirement": None,
+        "Định nghĩa": st.column_config.TextColumn(
+            "Định nghĩa", 
+            help="Vị trí thực tế trong bệnh viện",
+            disabled=True, 
+            width="large"
+        ),
         "Số lượng": st.column_config.NumberColumn(
             "Số lượng",
             min_value=0,
@@ -101,10 +116,23 @@ edited_df = st.data_editor(
             "Nhân sự phụ trách",
             options=list(staff_options.keys()),
             width="medium"
+        ),
+        "Nội dung điều chỉnh": st.column_config.TextColumn(
+            "Nội dung điều chỉnh",
+            help="Ghi chú định tính của người kiểm tra",
+            width="large",
+            max_chars=500
+        ),
+        "Link minh chứng": st.column_config.LinkColumn(
+            "Link minh chứng",
+            help="URL tài liệu tham khảo",
+            width="medium",
+            max_chars=200
         )
     },
     hide_index=True,
-    use_container_width=True
+    use_container_width=True,
+    height=600  # Tăng chiều cao để hiển thị nhiều hàng hơn
 )
 
 # Nút Lưu
@@ -127,14 +155,16 @@ if st.button("💾 Lưu Kết Quả", type="primary", use_container_width=True):
             is_pass = row['Đạt']
             staff_name = row['Nhân sự phụ trách']
             staff_id = staff_options[staff_name]
+            adjustment_note = row['Nội dung điều chỉnh'] if row['Nội dung điều chỉnh'] else None
+            evidence_link = row['Link minh chứng'] if row['Link minh chứng'] else None
             
             cur.execute(
                 """
                 INSERT INTO evaluation_details 
-                (evaluation_id, criteria_id, quantity, is_pass, staff_id)
-                VALUES (%s, %s, %s, %s, %s)
+                (evaluation_id, criteria_id, quantity, is_pass, staff_id, adjustment_note, evidence_link)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (eval_id, criteria_id, quantity, is_pass, staff_id)
+                (eval_id, criteria_id, quantity, is_pass, staff_id, adjustment_note, evidence_link)
             )
         
         conn.commit()
@@ -151,7 +181,7 @@ if st.button("💾 Lưu Kết Quả", type="primary", use_container_width=True):
 st.divider()
 st.write("### 📊 Thống kê nhanh")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     total = len(edited_df)
@@ -165,11 +195,26 @@ with col3:
     failed = total - passed
     st.metric("Không Đạt", failed, delta=f"{failed/total*100:.1f}%", delta_color="inverse")
 
+with col4:
+    has_notes = len(edited_df[edited_df['Nội dung điều chỉnh'] != ""])
+    st.metric("Có ghi chú", has_notes)
+
 # Tiêu chí không đạt
 if failed > 0:
     st.write("### ⚠️ Danh sách KHÔNG ĐẠT")
-    df_failed = edited_df[edited_df['Đạt'] == False][['area_name', 'location_name', 'category', 'Nhân sự phụ trách']]
+    df_failed = edited_df[edited_df['Đạt'] == False][
+        ['area_name', 'location_name', 'category', 'Nhân sự phụ trách', 'Nội dung điều chỉnh', 'Link minh chứng']
+    ]
     st.dataframe(df_failed, use_container_width=True, hide_index=True)
+
+# Tiêu chí có nội dung điều chỉnh
+has_adjustment = edited_df[edited_df['Nội dung điều chỉnh'] != ""]
+if len(has_adjustment) > 0:
+    st.write("### 📝 Danh sách có Nội dung điều chỉnh")
+    df_adjustment = has_adjustment[
+        ['area_name', 'location_name', 'category', 'Nhân sự phụ trách', 'Nội dung điều chỉnh', 'Link minh chứng']
+    ]
+    st.dataframe(df_adjustment, use_container_width=True, hide_index=True)
 
 # Lịch sử
 st.divider()
@@ -181,7 +226,8 @@ df_history = run_query("""
         d.unit_name,
         COUNT(ed.id) as tong_so,
         SUM(CASE WHEN ed.is_pass THEN 1 ELSE 0 END) as so_dat,
-        ROUND(AVG(CASE WHEN ed.is_pass THEN 100.0 ELSE 0.0 END), 1) as ty_le_dat
+        ROUND(AVG(CASE WHEN ed.is_pass THEN 100.0 ELSE 0.0 END), 1) as ty_le_dat,
+        COUNT(CASE WHEN ed.adjustment_note IS NOT NULL AND ed.adjustment_note != '' THEN 1 END) as co_ghi_chu
     FROM evaluations e
     JOIN departments d ON e.department_id = d.id
     JOIN evaluation_details ed ON e.id = ed.evaluation_id
@@ -204,7 +250,8 @@ if not df_history.empty:
                 format="%.1f%%",
                 min_value=0,
                 max_value=100
-            )
+            ),
+            "co_ghi_chu": "Có ghi chú"
         },
         use_container_width=True,
         hide_index=True
