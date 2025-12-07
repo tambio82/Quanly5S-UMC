@@ -255,7 +255,7 @@ with tab1:
                     
                     st.download_button(
                         "📥 Tải PDF",
-                        data=pdf_bytes,
+                        data=bytes(pdf_bytes),  # Convert to bytes if needed
                         file_name=f"BC_5S_{selected_dept.split(' - ')[0]}_{report_date}.pdf",
                         mime="application/pdf",
                         use_container_width=True
