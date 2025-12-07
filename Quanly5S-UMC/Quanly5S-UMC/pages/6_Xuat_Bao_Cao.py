@@ -227,8 +227,8 @@ with tab1:
                     pdf.cell(65, 6, supervisor or '', 0, 0, 'C')
                     pdf.cell(60, 6, manager or '', 0, 1, 'C')
                     
-                    # Save
-                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                    # Save - fpdf2 returns bytes directly
+                    pdf_bytes = pdf.output()
                     
                     conn = get_connection()
                     cur = conn.cursor()
