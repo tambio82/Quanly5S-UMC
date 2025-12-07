@@ -140,10 +140,10 @@ with tab1:
                     else:
                         pdf.set_font('Arial', '', 10)
                     
-                    pdf.cell(0, 6, f"Khoa/Phong: {selected_dept}", 0, 1)
-                    pdf.cell(0, 6, f"Thoi gian: {report_date}", 0, 1)
+                    pdf.cell(0, 6, f"Khoa/Phòng: {selected_dept}", 0, 1)
+                    pdf.cell(0, 6, f"Thời gian: {report_date}", 0, 1)
                     if evaluator:
-                        pdf.cell(0, 6, f"Nguoi kiem tra: {evaluator}", 0, 1)
+                        pdf.cell(0, 6, f"Người kiểm tra: {evaluator}", 0, 1)
                     pdf.ln(10)
                     
                     # Table
@@ -156,7 +156,7 @@ with tab1:
                     pdf.set_text_color(255, 255, 255)
                     
                     widths = [35, 45, 55, 25, 30]
-                    headers = ['Khu vuc', 'Vi tri', 'Hang muc', 'Ket qua', 'Nhan su']
+                    headers = ['Khu vực', 'Vị trí', 'Hạng mục', 'Kết quả', 'Nhân sự']
                     
                     for i, h in enumerate(headers):
                         pdf.cell(widths[i], 8, h, 1, 0, 'C', True)
@@ -196,7 +196,7 @@ with tab1:
                         else:
                             pdf.set_font('Arial', 'B', 11)
                         
-                        pdf.cell(0, 8, 'DANH GIA & NHAN XET', 0, 1)
+                        pdf.cell(0, 8, 'ĐÁNH GIÁ & NHẬN XÉT', 0, 1)
                         
                         if pdf.use_dejavu:
                             pdf.set_font('DejaVu', '', 10)
@@ -213,9 +213,9 @@ with tab1:
                     else:
                         pdf.set_font('Arial', 'B', 10)
                     
-                    pdf.cell(60, 6, 'Nguoi kiem tra', 0, 0, 'C')
-                    pdf.cell(65, 6, 'Dieu phoi', 0, 0, 'C')
-                    pdf.cell(60, 6, 'P.Quan ly CL', 0, 1, 'C')
+                    pdf.cell(60, 6, 'Người kiểm tra', 0, 0, 'C')
+                    pdf.cell(65, 6, 'Điều phối/Giám sát', 0, 0, 'C')
+                    pdf.cell(60, 6, 'P.Quản lý chất lượng', 0, 1, 'C')
                     pdf.ln(20)
                     
                     if pdf.use_dejavu:
