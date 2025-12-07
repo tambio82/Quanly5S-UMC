@@ -155,7 +155,8 @@ with tab1:
                     pdf.set_fill_color(66, 153, 225)
                     pdf.set_text_color(255, 255, 255)
                     
-                    widths = [35, 45, 55, 25, 30]
+                    # Optimized column widths: Khu vực | Vị trí | Hạng mục | Kết quả | Nhân sự
+                    widths = [32, 28, 68, 18, 44]
                     headers = ['Khu vực', 'Vị trí', 'Hạng mục', 'Kết quả', 'Nhân sự']
                     
                     for i, h in enumerate(headers):
@@ -169,23 +170,71 @@ with tab1:
                     
                     pdf.set_text_color(0, 0, 0)
                     
+                    # Helper function to wrap text
+                    def wrap_text(text, max_len):
+                        """Wrap text to max length, breaking at spaces"""
+                        if len(text) <= max_len:
+                            return [text]
+                        
+                        words = text.split()
+                        lines = []
+                        current = ""
+                        
+                        for word in words:
+                            if len(current) + len(word) + 1 <= max_len:
+                                current = current + " " + word if current else word
+                            else:
+                                if current:
+                                    lines.append(current)
+                                current = word
+                        
+                        if current:
+                            lines.append(current)
+                        
+                        return lines if lines else [text[:max_len]]
+                    
                     for idx, row in df_preview.iterrows():
                         if idx % 2 == 0:
                             pdf.set_fill_color(247, 250, 252)
                         else:
                             pdf.set_fill_color(255, 255, 255)
                         
-                        data = [
-                            str(row['area_name'])[:18],
-                            str(row['location_name'])[:22],
-                            str(row['category'])[:28],
-                            str(row['result'])[:12],
-                            str(row['staff'])[:15]
-                        ]
+                        # Prepare data
+                        area = str(row['area_name'])
+                        location = str(row['location_name'])
+                        category = str(row['category'])
+                        result = str(row['result'])
+                        staff = str(row['staff'])
                         
-                        for i, val in enumerate(data):
-                            pdf.cell(widths[i], 6, val, 1, 0, 'L', True)
-                        pdf.ln()
+                        # Wrap category if needed (max ~34 chars per line)
+                        category_lines = wrap_text(category, 34)
+                        
+                        # Calculate row height based on category lines
+                        row_height = 6 if len(category_lines) == 1 else 5 * len(category_lines)
+                        
+                        x_start = pdf.get_x()
+                        y_start = pdf.get_y()
+                        
+                        # Draw cells with proper height
+                        pdf.cell(widths[0], row_height, area[:16], 1, 0, 'L', True)
+                        pdf.cell(widths[1], row_height, location[:14], 1, 0, 'L', True)
+                        
+                        # Category with multi-line support
+                        x_cat = pdf.get_x()
+                        y_cat = pdf.get_y()
+                        
+                        # Draw border and fill for category cell
+                        pdf.rect(x_cat, y_cat, widths[2], row_height, 'FD')
+                        
+                        # Write text inside
+                        pdf.set_xy(x_cat + 1, y_cat + 1)
+                        for line in category_lines:
+                            pdf.cell(widths[2] - 2, 4, line, 0, 2, 'L')
+                        
+                        # Continue with result and staff
+                        pdf.set_xy(x_cat + widths[2], y_cat)
+                        pdf.cell(widths[3], row_height, result[:8], 1, 0, 'C', True)
+                        pdf.cell(widths[4], row_height, staff[:22], 1, 1, 'L', True)
                     
                     pdf.ln(10)
                     
