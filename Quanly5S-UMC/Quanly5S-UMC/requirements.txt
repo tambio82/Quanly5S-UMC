@@ -2,7 +2,7 @@ streamlit
 pandas
 plotly
 psycopg2-binary
-fpdf
+fpdf2
 openpyxl
 xlsxwriter
 reportlab
